@@ -26,7 +26,7 @@ def root():
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://secure-chat-frontend.onrender.com"],
+    allow_origins=["https://secure-chat-front.onrender.com"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
