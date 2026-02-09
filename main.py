@@ -19,6 +19,11 @@ from google.auth.transport.requests import Request
 # ================== APP ==================
 app = FastAPI()
 
+
+@app.get("/")
+def root():
+    return {"status": "Secure Chat Backend Running 🚀"}
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000"],
