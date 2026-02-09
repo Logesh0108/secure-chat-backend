@@ -4,39 +4,34 @@ from pydantic import BaseModel, EmailStr
 from datetime import datetime, timedelta
 from typing import Dict
 import random
-import base64
-import pickle
-import os
-import uuid
-from email.message import EmailMessage
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from uuid import uuid4
-from collections import defaultdict
-
-from googleapiclient.discovery import build
-from google.auth.transport.requests import Request
 
 # ================== APP ==================
 app = FastAPI()
 
+# ✅ CORS (MUST BE FIRST)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "https://secure-chat-front.onrender.com"
+    ],
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["*"],
+)
+
+# ✅ OPTIONS PREFLIGHT HANDLER
+@app.options("/{path:path}")
+async def preflight_handler(path: str):
+    return {}
 
 @app.get("/")
 def root():
     return {"status": "Secure Chat Backend Running 🚀"}
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["https://secure-chat-front.onrender.com"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
 # ================== CONFIG ==================
 OTP_EXPIRY_MINUTES = 4
 OTP_STORE: Dict[str, dict] = {}
-
-SENDER_EMAIL = "logeshnalliyappan@gmail.com"
 
 # ================== MODELS ==================
 class LoginRequest(BaseModel):
@@ -49,55 +44,6 @@ class VerifyRequest(BaseModel):
 # ================== OTP HELPERS ==================
 def generate_otp() -> str:
     return str(random.randint(100000, 999999))
-
-def get_gmail_service():
-    if not os.path.exists("token.pickle"):
-        raise Exception("token.pickle not found. Run gmail_auth.py first.")
-
-    with open("token.pickle", "rb") as token:
-        creds = pickle.load(token)
-
-    if creds.expired and creds.refresh_token:
-        creds.refresh(Request())
-
-    return build("gmail", "v1", credentials=creds)
-
-def send_email_otp(to_email: str, otp: str):
-    try:
-        service = get_gmail_service()
-
-        msg = EmailMessage()
-        msg.set_content(
-            f"""
-Your Secure Chat OTP is: {otp}
-
-Requested at: {datetime.utcnow().isoformat()}
-Request ID: {uuid.uuid4()}
-
-This OTP is valid for 4 minutes.
-Do not share this OTP.
-"""
-        )
-
-        msg["To"] = to_email
-        msg["From"] = SENDER_EMAIL
-        msg["Subject"] = "Secure Chat OTP"
-
-        encoded_message = base64.urlsafe_b64encode(
-            msg.as_bytes()
-        ).decode()
-
-        service.users().messages().send(
-            userId="me",
-            body={"raw": encoded_message}
-        ).execute()
-
-    except Exception as e:
-        print("GMAIL API ERROR:", e)
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to send OTP email"
-        )
 
 # ================== OTP ROUTES ==================
 @app.post("/send-otp")
@@ -112,16 +58,15 @@ def send_otp(data: LoginRequest):
 
     otp = generate_otp()
 
-    # send first
-    send_email_otp(data.email, otp)
+    # 🔥 TEMP: simulate sending OTP
+    print(f"📩 OTP for {data.email}: {otp}")
 
-    # store only if send succeeded
     OTP_STORE[data.email] = {
         "otp": otp,
         "expiry": datetime.utcnow() + timedelta(minutes=OTP_EXPIRY_MINUTES)
     }
 
-    return {"message": "OTP sent"}
+    return {"message": "OTP sent successfully"}
 
 @app.post("/verify-otp")
 def verify_otp(data: VerifyRequest):
@@ -140,48 +85,8 @@ def verify_otp(data: VerifyRequest):
     return {"message": "OTP verified"}
 
 # ================== WEBSOCKET CHAT ==================
-class ConnectionManager:
-    def __init__(self):
-        self.active_connections: Dict[WebSocket, str] = {}
-
-    async def connect(self, websocket: WebSocket, user: str):
-        await websocket.accept()
-        self.active_connections[websocket] = user
-
-    def disconnect(self, websocket: WebSocket):
-        self.active_connections.pop(websocket, None)
-
-    async def broadcast_message(self, sender_ws: WebSocket, text: str):
-        sender = self.active_connections.get(sender_ws, "Unknown")
-
-        payload = {
-            "type": "message",
-            "user": sender,
-            "text": text,
-            "time": datetime.utcnow().isoformat()
-        }
-
-        for connection in self.active_connections:
-            await connection.send_json(payload)
-
-    async def broadcast_typing(self, sender_ws: WebSocket):
-        sender = self.active_connections.get(sender_ws, "Unknown")
-
-        for connection in self.active_connections:
-            if connection != sender_ws:
-                await connection.send_json({
-                    "type": "typing",
-                    "user": sender
-                })
-
-manager = ConnectionManager()
-# ================== WEBSOCKET CHAT ==================
-from collections import defaultdict
-from uuid import uuid4
-
-connections = {}   # websocket -> user
-messages = []      # stored messages with reactions
-
+connections = {}
+messages = []
 
 @app.websocket("/ws/chat")
 async def chat_ws(websocket: WebSocket):
@@ -193,7 +98,6 @@ async def chat_ws(websocket: WebSocket):
     try:
         while True:
             data = await websocket.receive_json()
-            print("📩 Received:", data)
 
             # 💬 TEXT MESSAGE
             if data["type"] == "message":
@@ -221,7 +125,7 @@ async def chat_ws(websocket: WebSocket):
                 for ws in connections:
                     await ws.send_json(msg)
 
-            # ❤️ REACTION (UPDATE ONLY)
+            # ❤️ REACTION
             elif data["type"] == "reaction":
                 for msg in messages:
                     if msg["id"] == data["messageId"]:
@@ -232,16 +136,14 @@ async def chat_ws(websocket: WebSocket):
                         if user not in msg["reactions"][emoji]:
                             msg["reactions"][emoji].append(user)
 
-                        payload = {
-                            "type": "reaction",
-                            "messageId": msg["id"],
-                            "reactions": msg["reactions"],
-                        }
-
                         for ws in connections:
-                            await ws.send_json(payload)
+                            await ws.send_json({
+                                "type": "reaction",
+                                "messageId": msg["id"],
+                                "reactions": msg["reactions"],
+                            })
 
-            # ✍️ TYPING (NOT A MESSAGE)
+            # ✍️ TYPING
             elif data["type"] == "typing":
                 for ws in connections:
                     if ws != websocket:
