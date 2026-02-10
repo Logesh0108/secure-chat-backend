@@ -8,17 +8,14 @@ from uuid import uuid4
 
 # ================== APP ==================
 app = FastAPI()
-
-# ✅ CORS (MUST BE FIRST)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://secure-chat-front.onrender.com"
-    ],
+    allow_origins=["*"],   # later we’ll restrict
     allow_credentials=True,
-    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 # ✅ OPTIONS PREFLIGHT HANDLER
 @app.options("/{path:path}")
