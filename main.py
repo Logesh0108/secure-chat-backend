@@ -25,6 +25,11 @@ app.add_middleware(
 @app.options("/{path:path}")
 async def preflight_handler(path: str):
     return {}
+    
+@app.head("/")
+def root_head():
+    return
+
 
 # ✅ ROOT (HEALTH CHECK)
 @app.get("/")
