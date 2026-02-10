@@ -9,8 +9,12 @@ from uuid import uuid4
 # ================== APP ==================
 app = FastAPI(
     title="Secure Chat Backend",
-    version="1.0.0"
+    version="1.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_url="/openapi.json"
 )
+
 
 # ✅ CORS (RENDER + REACT SAFE)
 app.add_middleware(
