@@ -7,21 +7,26 @@ import random
 from uuid import uuid4
 
 # ================== APP ==================
-app = FastAPI()
+app = FastAPI(
+    title="Secure Chat Backend",
+    version="1.0.0"
+)
+
+# ✅ CORS (RENDER + REACT SAFE)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],   # later we’ll restrict
+    allow_origins=["*"],   # later restrict to frontend URL
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-
-# ✅ OPTIONS PREFLIGHT HANDLER
+# ✅ OPTIONS PREFLIGHT HANDLER (IMPORTANT FOR RENDER)
 @app.options("/{path:path}")
 async def preflight_handler(path: str):
     return {}
 
+# ✅ ROOT (HEALTH CHECK)
 @app.get("/")
 def root():
     return {"status": "Secure Chat Backend Running 🚀"}
@@ -82,12 +87,13 @@ def verify_otp(data: VerifyRequest):
     return {"message": "OTP verified"}
 
 # ================== WEBSOCKET CHAT ==================
-connections = {}
+connections: Dict[WebSocket, str] = {}
 messages = []
 
 @app.websocket("/ws/chat")
 async def chat_ws(websocket: WebSocket):
     user = websocket.query_params.get("user", "Unknown")
+
     await websocket.accept()
     connections[websocket] = user
     print(f"✅ WebSocket connected: {user}")
@@ -106,7 +112,7 @@ async def chat_ws(websocket: WebSocket):
                     "reactions": {},
                 }
                 messages.append(msg)
-                for ws in connections:
+                for ws in list(connections.keys()):
                     await ws.send_json(msg)
 
             # 🖼️ IMAGE MESSAGE
@@ -119,7 +125,7 @@ async def chat_ws(websocket: WebSocket):
                     "reactions": {},
                 }
                 messages.append(msg)
-                for ws in connections:
+                for ws in list(connections.keys()):
                     await ws.send_json(msg)
 
             # ❤️ REACTION
@@ -133,7 +139,7 @@ async def chat_ws(websocket: WebSocket):
                         if user not in msg["reactions"][emoji]:
                             msg["reactions"][emoji].append(user)
 
-                        for ws in connections:
+                        for ws in list(connections.keys()):
                             await ws.send_json({
                                 "type": "reaction",
                                 "messageId": msg["id"],
@@ -142,7 +148,7 @@ async def chat_ws(websocket: WebSocket):
 
             # ✍️ TYPING
             elif data["type"] == "typing":
-                for ws in connections:
+                for ws in list(connections.keys()):
                     if ws != websocket:
                         await ws.send_json({
                             "type": "typing",
