@@ -38,7 +38,7 @@ def root_head():
 # ✅ ROOT (HEALTH CHECK)
 @app.get("/")
 def root():
-    return {"status": "Secure Chat Backend Running 🚀"}
+    return {"status": "Secure Chat Backend Running successfully  🚀"}
 
 # ================== CONFIG ==================
 OTP_EXPIRY_MINUTES = 4
