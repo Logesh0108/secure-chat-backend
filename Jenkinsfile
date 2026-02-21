@@ -7,12 +7,6 @@ pipeline {
 
     stages {
 
-        stage('Clone Repository') {
-            steps {
-                echo 'Cloning backend repository...'
-            }
-        }
-
         stage('Setup Python Environment') {
             steps {
                 sh '''
@@ -32,6 +26,15 @@ pipeline {
                 '''
             }
         }
+
+        stage('Deploy Backend') {
+            steps {
+                sh '''
+                pkill -f uvicorn || true
+                nohup venv/bin/uvicorn main:app --host 0.0.0.0 --port 8000 &
+                '''
+            }
+        }
     }
 
     post {
@@ -41,14 +44,5 @@ pipeline {
         failure {
             echo 'Pipeline failed!'
         }
-    }
-}
-
-stage('Deploy Backend') {
-    steps {
-        sh '''
-        pkill -f uvicorn || true
-        nohup venv/bin/uvicorn main:app --host 0.0.0.0 --port 8000 &
-        '''
     }
 }
